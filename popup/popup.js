@@ -68,6 +68,11 @@ $('btn-push').addEventListener('click', withBusy('btn-push', async () => {
   handleResponse(r, () => `Pushed to ${r.result.platform}: ${r.result.project} (${r.result.branch}). ${r.result.updated ? 'Updated' : 'Created'}.`);
 }));
 
+$('btn-pull').addEventListener('click', withBusy('btn-pull', async () => {
+  const r = await sendMessage({ type: 'pullGit' });
+  handleResponse(r, () => `Pulled ${r.result.tabCount} tabs in ${r.result.windowCount} windows from Git.`);
+}));
+
 $('btn-export').addEventListener('click', withBusy('btn-export', async () => {
   const r = await sendMessage({ type: 'exportFile' });
   handleResponse(r, () => `Exported: ${r.result.filename}`);

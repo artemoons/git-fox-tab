@@ -312,6 +312,24 @@ function validateSettings(s) {
 
 /* ---------- import / export ---------- */
 
+async function pullFromGit() {
+  const settings = await getSettings();
+  const errors = validateSettings(settings);
+  if (errors.length) throw new Error('Settings incomplete: ' + errors.join('; '));
+
+  const existing = await gitGetFile(settings);
+  if (!existing) throw new Error('File not found in repository.');
+
+  const json = base64ToUtf8(existing.content);
+  let data;
+  try {
+    data = JSON.parse(json);
+  } catch (e) {
+    throw new Error('File is not valid JSON: ' + e.message);
+  }
+  return importFromData(data);
+}
+
 async function exportToFile() {
   const data = await getTabsData();
   if (!data) throw new Error('No saved tabs to export. Collect tabs first.');
@@ -469,6 +487,8 @@ async function handle(message) {
     }
     case 'pushGit':
       return pushToGit();
+    case 'pullGit':
+      return pullFromGit();
     case 'exportFile':
       return exportToFile();
     case 'importData':
