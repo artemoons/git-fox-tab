@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Git Fox Tab",
+  "version": "1.0.0",
+  "description": "Save all open tabs (and tab groups) across windows and export them to Git (GitHub/GitLab).",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "contextualIdentities",
+    "storage",
+    "downloads",
+    "windows"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Git Fox Tab",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "git-fox-tab@local.extension",
+      "strict_min_version": "141.0"
+    }
+  }
+}

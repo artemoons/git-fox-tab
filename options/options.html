@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Git Fox Tab — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <img src="../icons/icon-48.png" alt="" />
+      <h1>Git Fox Tab — Settings</h1>
+    </header>
+
+    <form id="form" class="form">
+      <div class="field">
+        <label for="gitPlatform">Platform</label>
+        <select id="gitPlatform">
+          <option value="gitlab">GitLab</option>
+          <option value="github">GitHub</option>
+        </select>
+        <small class="hint">Choose your Git hosting.</small>
+      </div>
+
+      <div class="field">
+        <label for="serverUrl">Server URL</label>
+        <input id="serverUrl" type="url" placeholder="https://gitlab.example.com" />
+        <small class="hint">GitLab: your instance URL. GitHub: leave empty for github.com, or set Enterprise URL.</small>
+      </div>
+
+      <div class="field">
+        <label for="token">Access token</label>
+        <input id="token" type="password" placeholder="glpat-… / ghp_…" autocomplete="off" />
+        <small class="hint">GitLab: project token with <code>write_repository</code>. GitHub: fine-grained PAT with <code>Contents: Read and write</code>.</small>
+      </div>
+
+      <div class="field">
+        <label for="projectPath">Project path</label>
+        <input id="projectPath" type="text" placeholder="namespace/repo" />
+        <small class="hint">e.g. <code>myteam/tabs-backup</code>.</small>
+      </div>
+
+      <div class="field">
+        <label for="branch">Branch</label>
+        <input id="branch" type="text" placeholder="main" />
+      </div>
+
+      <div class="field">
+        <label for="filePath">File path in repo</label>
+        <input id="filePath" type="text" placeholder="git-fox-tab/tabs-export.json" />
+      </div>
+
+      <div class="field">
+        <label for="commitMessage">Commit message</label>
+        <input id="commitMessage" type="text" placeholder="chore: update tabs export" />
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">Save settings</button>
+        <button type="button" id="btn-test" class="btn">Test connection</button>
+      </div>
+
+      <div id="message" class="message" hidden></div>
+    </form>
+
+    <section class="note">
+      <p>Host permission for the server is requested on save so the extension can call the Git API.</p>
+    </section>
+  </main>
+
+  <script src="options.js"></script>
+</body>
+</html>

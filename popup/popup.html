@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="header">
+    <img src="../icons/icon-48.png" alt="" class="logo" />
+    <h1>Git Fox Tab</h1>
+  </header>
+
+  <section id="status" class="status">
+    <div class="status-row"><span>Windows</span><b id="stat-windows">—</b></div>
+    <div class="status-row"><span>Tabs</span><b id="stat-tabs">—</b></div>
+    <div class="status-row"><span>Groups</span><b id="stat-groups">—</b></div>
+    <div class="status-row"><span>Containers</span><b id="stat-containers">—</b></div>
+    <div class="status-row"><span>Saved</span><b id="stat-saved">—</b></div>
+  </section>
+
+  <div class="actions">
+    <button id="btn-collect" class="btn primary">Collect &amp; save tabs</button>
+    <button id="btn-push" class="btn">Push to Git</button>
+    <button id="btn-export" class="btn">Export to file</button>
+    <button id="btn-import" class="btn">Import from file</button>
+    <button id="btn-restore" class="btn">Restore tabs</button>
+    <input type="file" id="file-input" accept="application/json,.json" hidden />
+  </div>
+
+  <div id="message" class="message" hidden></div>
+
+  <footer class="footer">
+    <a id="open-options" href="#">Settings</a>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
