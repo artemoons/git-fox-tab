@@ -75,7 +75,7 @@ $('btn-export').addEventListener('click', withBusy('btn-export', async () => {
 
 $('btn-restore').addEventListener('click', withBusy('btn-restore', async () => {
   const r = await sendMessage({ type: 'restore' });
-  handleResponse(r, () => `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows.`);
+  handleResponse(r, () => `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows (${r.result.restoredGroups} groups).`);
 }));
 
 $('btn-import').addEventListener('click', () => $('file-input').click());

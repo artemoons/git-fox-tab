@@ -105,7 +105,7 @@ async function collectTabs() {
       index: tab.index,
       pinned: !!tab.pinned,
       active: !!tab.active,
-      groupId: (typeof tab.groupId === 'number') ? tab.groupId : null,
+      groupId: (typeof tab.groupId === 'number' && tab.groupId >= 0) ? tab.groupId : null,
       cookieStoreId: tab.cookieStoreId || null,
       favIconUrl: tab.favIconUrl || null
     });
@@ -346,37 +346,102 @@ async function importFromData(data) {
 async function restoreTabs() {
   const data = await getTabsData();
   if (!data) throw new Error('No saved tabs to restore.');
+
+  const canGroup = browser.tabs && typeof browser.tabs.group === 'function' &&
+                   browser.tabGroups && typeof browser.tabGroups.update === 'function';
+
+  // Lookup: old groupId -> saved group metadata (name, color, collapsed).
+  const groupInfoMap = new Map((data.groups || []).map(g => [g.id, g]));
+
   let openedWindows = 0;
   let openedTabs = 0;
+  let restoredGroups = 0;
 
   for (const win of data.windows) {
     const tabs = (win.tabs || []).filter(t => t.url && !/^(about|chrome|moz-extension):/i.test(t.url));
     if (!tabs.length) continue;
-    const urls = tabs.map(t => t.url);
-    const newWin = await browser.windows.create({ url: urls.slice(0, 1) });
+
+    // Create window with the first tab.
+    const newWin = await browser.windows.create({ url: tabs[0].url });
     openedWindows++;
     openedTabs++;
 
-    // Create remaining tabs in the new window, preserving order/pinned.
-    const newTabs = await browser.tabs.query({ windowId: newWin.id });
-    if (newTabs[0] && tabs[0] && tabs[0].pinned) {
-      try { await browser.tabs.update(newTabs[0].id, { pinned: true }); } catch (e) {}
+    // Track new tab IDs by their original groupId so we can group them later.
+    const groupIdToNewTabIds = new Map();
+
+    const initialTabs = await browser.tabs.query({ windowId: newWin.id });
+    const firstNewTabId = initialTabs[0].id;
+    if (tabs[0].pinned) {
+      try { await browser.tabs.update(firstNewTabId, { pinned: true }); } catch (e) {}
     }
+    if (tabs[0].groupId != null) {
+      groupIdToNewTabIds.set(tabs[0].groupId, [firstNewTabId]);
+    }
+
+    // Create remaining tabs, preserving order/pinned/container.
     for (let i = 1; i < tabs.length; i++) {
+      const savedTab = tabs[i];
       try {
-        await browser.tabs.create({
+        const createProps = {
           windowId: newWin.id,
-          url: tabs[i].url,
-          pinned: !!tabs[i].pinned
-        });
+          url: savedTab.url,
+          pinned: !!savedTab.pinned
+        };
+        if (savedTab.cookieStoreId) createProps.cookieStoreId = savedTab.cookieStoreId;
+        let newTab;
+        try {
+          newTab = await browser.tabs.create(createProps);
+        } catch (innerErr) {
+          // Container may not exist on this profile — retry without it.
+          newTab = await browser.tabs.create({
+            windowId: newWin.id,
+            url: savedTab.url,
+            pinned: !!savedTab.pinned
+          });
+        }
         openedTabs++;
+        if (savedTab.groupId != null) {
+          if (!groupIdToNewTabIds.has(savedTab.groupId)) {
+            groupIdToNewTabIds.set(savedTab.groupId, []);
+          }
+          groupIdToNewTabIds.get(savedTab.groupId).push(newTab.id);
+        }
       } catch (e) {
-        console.warn('Failed to create tab:', tabs[i].url, e);
+        console.warn('Failed to create tab:', savedTab.url, e);
+      }
+    }
+
+    // Restore tab groups: move grouped tabs together, then create the group.
+    // Firefox groups are contiguous ranges — if ungrouped tabs sit between
+    // grouped ones, tabs.group() absorbs them. Moving first prevents that.
+    if (canGroup && groupIdToNewTabIds.size > 0) {
+      for (const [oldGroupId, tabIds] of groupIdToNewTabIds) {
+        const info = groupInfoMap.get(oldGroupId);
+        if (!info) continue; // no matching saved group — skip (ungrouped tabs)
+        try {
+          if (tabIds.length > 1) {
+            const firstTab = await browser.tabs.get(tabIds[0]);
+            await browser.tabs.move(tabIds, { index: firstTab.index });
+          }
+          const newGroupId = await browser.tabs.group({
+            tabIds: tabIds,
+            createProperties: { windowId: newWin.id }
+          });
+          if (info) {
+            const updateProps = { collapsed: !!info.collapsed };
+            if (info.name) updateProps.name = info.name;
+            if (info.color) updateProps.color = info.color;
+            await browser.tabGroups.update(newGroupId, updateProps);
+          }
+          restoredGroups++;
+        } catch (e) {
+          console.warn('Failed to restore group:', info && info.name, e);
+        }
       }
     }
   }
 
-  return { openedWindows, openedTabs };
+  return { openedWindows, openedTabs, restoredGroups };
 }
 
 /* ---------- message router ---------- */
