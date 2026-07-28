@@ -120,7 +120,7 @@ async function collectTabs() {
         for (const g of gs) {
           groups.push({
             id: g.id,
-            name: g.name || '',
+            name: g.title || '',
             color: g.color || null,
             collapsed: !!g.collapsed,
             windowId: g.windowId
@@ -429,7 +429,7 @@ async function restoreTabs() {
           });
           if (info) {
             const updateProps = { collapsed: !!info.collapsed };
-            if (info.name) updateProps.name = info.name;
+            if (info.name) updateProps.title = info.name;
             if (info.color) updateProps.color = info.color;
             await browser.tabGroups.update(newGroupId, updateProps);
           }
