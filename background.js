@@ -190,13 +190,22 @@ function fileUrlPath(filePath) {
   return filePath.split('/').map(encodeURIComponent).join('/');
 }
 
+// GitHub: /repos/{owner}/{repo}/... — slashes must stay literal.
+// GitLab: /projects/:id — :id accepts the URL-encoded full path (owner%2Frepo).
+function projectPathForUrl(settings) {
+  if (settings.gitPlatform === 'github') {
+    return settings.projectPath.split('/').map(encodeURIComponent).join('/');
+  }
+  return encodeURIComponent(settings.projectPath);
+}
+
 async function gitGetFile(settings) {
   const apiBase = apiBaseFor(settings);
   const filePart = fileUrlPath(settings.filePath);
   const ref = encodeURIComponent(settings.branch);
 
   if (settings.gitPlatform === 'github') {
-    const url = `${apiBase}/repos/${encodeURIComponent(settings.projectPath)}/contents/${filePart}?ref=${ref}`;
+    const url = `${apiBase}/repos/${projectPathForUrl(settings)}/contents/${filePart}?ref=${ref}`;
     const res = await fetch(url, { headers: authHeaders(settings) });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GitHub GET ${res.status}: ${await res.text()}`);
@@ -204,7 +213,7 @@ async function gitGetFile(settings) {
     return { sha: data.sha || null, content: data.content || '' };
   }
 
-  const url = `${apiBase}/projects/${encodeURIComponent(settings.projectPath)}/repository/files/${filePart}?ref=${ref}`;
+  const url = `${apiBase}/projects/${projectPathForUrl(settings)}/repository/files/${filePart}?ref=${ref}`;
   const res = await fetch(url, { headers: authHeaders(settings) });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitLab GET ${res.status}: ${await res.text()}`);
@@ -218,7 +227,7 @@ async function gitPutFile(settings, contentBase64, existingSha) {
   const message = settings.commitMessage || 'chore: update tabs export';
 
   if (settings.gitPlatform === 'github') {
-    const url = `${apiBase}/repos/${encodeURIComponent(settings.projectPath)}/contents/${filePart}`;
+    const url = `${apiBase}/repos/${projectPathForUrl(settings)}/contents/${filePart}`;
     const body = { message, content: contentBase64, branch: settings.branch };
     if (existingSha) body.sha = existingSha;
     const res = await fetch(url, {
@@ -230,7 +239,7 @@ async function gitPutFile(settings, contentBase64, existingSha) {
     return res.json();
   }
 
-  const url = `${apiBase}/projects/${encodeURIComponent(settings.projectPath)}/repository/files/${filePart}`;
+  const url = `${apiBase}/projects/${projectPathForUrl(settings)}/repository/files/${filePart}`;
   const body = {
     branch: settings.branch,
     content: contentBase64,
