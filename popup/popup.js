@@ -51,30 +51,31 @@ function withBusy(btn, fn) {
   };
 }
 
-function handleResponse(res, okText) {
+function handleResponse(res, okTextFn) {
   if (!res.ok) throw new Error(res.error || 'Operation failed');
-  if (okText) showMessage(okText, 'ok');
+  const text = typeof okTextFn === 'function' ? okTextFn() : okTextFn;
+  if (text) showMessage(text, 'ok');
   return res.result;
 }
 
 $('btn-collect').addEventListener('click', withBusy('btn-collect', async () => {
   const r = await sendMessage({ type: 'collect' });
-  handleResponse(r, `Saved ${r.result.tabCount} tabs in ${r.result.windowCount} windows.`);
+  handleResponse(r, () => `Saved ${r.result.tabCount} tabs in ${r.result.windowCount} windows.`);
 }));
 
 $('btn-push').addEventListener('click', withBusy('btn-push', async () => {
   const r = await sendMessage({ type: 'pushGit' });
-  handleResponse(r, `Pushed to ${r.result.platform}: ${r.result.project} (${r.result.branch}). ${r.result.updated ? 'Updated' : 'Created'}.`);
+  handleResponse(r, () => `Pushed to ${r.result.platform}: ${r.result.project} (${r.result.branch}). ${r.result.updated ? 'Updated' : 'Created'}.`);
 }));
 
 $('btn-export').addEventListener('click', withBusy('btn-export', async () => {
   const r = await sendMessage({ type: 'exportFile' });
-  handleResponse(r, `Exported: ${r.result.filename}`);
+  handleResponse(r, () => `Exported: ${r.result.filename}`);
 }));
 
 $('btn-restore').addEventListener('click', withBusy('btn-restore', async () => {
   const r = await sendMessage({ type: 'restore' });
-  handleResponse(r, `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows.`);
+  handleResponse(r, () => `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows.`);
 }));
 
 $('btn-import').addEventListener('click', () => $('file-input').click());
