@@ -186,8 +186,14 @@ function authHeaders(settings) {
   return { 'PRIVATE-TOKEN': settings.token };
 }
 
-function fileUrlPath(filePath) {
-  return filePath.split('/').map(encodeURIComponent).join('/');
+// GitHub: /repos/{owner}/{repo}/contents/{path} — slashes must stay literal.
+// GitLab: /projects/:id/repository/files/:file_path — the whole path must be
+// URL-encoded as a single segment, so '/' becomes %2F.
+function fileUrlPath(filePath, platform) {
+  if (platform === 'github') {
+    return filePath.split('/').map(encodeURIComponent).join('/');
+  }
+  return encodeURIComponent(filePath);
 }
 
 // GitHub: /repos/{owner}/{repo}/... — slashes must stay literal.
@@ -201,7 +207,7 @@ function projectPathForUrl(settings) {
 
 async function gitGetFile(settings) {
   const apiBase = apiBaseFor(settings);
-  const filePart = fileUrlPath(settings.filePath);
+  const filePart = fileUrlPath(settings.filePath, settings.gitPlatform);
   const ref = encodeURIComponent(settings.branch);
 
   if (settings.gitPlatform === 'github') {
@@ -221,9 +227,9 @@ async function gitGetFile(settings) {
   return { sha: data.blob_id || null, content: data.content || '' };
 }
 
-async function gitPutFile(settings, contentBase64, existingSha) {
+async function gitPutFile(settings, contentBase64, existingSha, fileExists) {
   const apiBase = apiBaseFor(settings);
-  const filePart = fileUrlPath(settings.filePath);
+  const filePart = fileUrlPath(settings.filePath, settings.gitPlatform);
   const message = settings.commitMessage || 'chore: update tabs export';
 
   if (settings.gitPlatform === 'github') {
@@ -239,18 +245,21 @@ async function gitPutFile(settings, contentBase64, existingSha) {
     return res.json();
   }
 
+  // GitLab: creating a new file requires POST, updating an existing one requires PUT.
   const url = `${apiBase}/projects/${projectPathForUrl(settings)}/repository/files/${filePart}`;
+  const method = fileExists ? 'PUT' : 'POST';
   const body = {
     branch: settings.branch,
     content: contentBase64,
+    encoding: 'base64',
     commit_message: message
   };
   const res = await fetch(url, {
-    method: 'PUT',
+    method,
     headers: Object.assign({}, authHeaders(settings), { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`GitLab PUT ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`GitLab ${method} ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
@@ -287,7 +296,7 @@ async function pushToGit() {
     console.warn('gitGetFile error (will attempt create):', e.message);
   }
 
-  const result = await gitPutFile(settings, contentBase64, existing ? existing.sha : null);
+  const result = await gitPutFile(settings, contentBase64, existing ? existing.sha : null, !!existing);
   return {
     ok: true,
     platform: settings.gitPlatform,
