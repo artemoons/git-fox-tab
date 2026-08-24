@@ -83,6 +83,157 @@ $('btn-restore').addEventListener('click', withBusy('btn-restore', async () => {
   handleResponse(r, () => `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows (${r.result.restoredGroups} groups).`);
 }));
 
+/* ---------- restore selected tabs screen ---------- */
+
+function showScreen(name) {
+  $('screen-main').hidden = name !== 'main';
+  $('screen-restore-selected').hidden = name !== 'restore-selected';
+}
+
+let rsSource = 'local';
+let rsCache = { local: null, git: null, gitError: null };
+let rsSelected = { local: new Set(), git: new Set() };
+
+function countRawTabs(data) {
+  if (!data || !Array.isArray(data.windows)) return 0;
+  return data.windows.reduce((n, w) => n + ((w.tabs || []).length), 0);
+}
+
+async function openRestoreSelected() {
+  showScreen('restore-selected');
+  clearMessage();
+
+  rsSelected = { local: new Set(), git: new Set() };
+  rsCache = { local: null, git: null, gitError: null };
+
+  $('rs-tab-local').disabled = true;
+  $('rs-tab-git').disabled = true;
+  $('rs-restore-btn').disabled = true;
+  $('rs-empty').hidden = true;
+  $('rs-list').innerHTML = '<div class="rs-loading">Loading…</div>';
+
+  const [localRes, gitRes] = await Promise.all([
+    sendMessage({ type: 'getLocalTabsData' }),
+    sendMessage({ type: 'getGitTabsData' })
+  ]);
+
+  rsCache.local = (localRes.ok && localRes.result) ? localRes.result : null;
+  if (gitRes.ok) {
+    rsCache.git = gitRes.result || null;
+  } else {
+    rsCache.git = null;
+    rsCache.gitError = gitRes.error || 'Failed to load Git backup.';
+  }
+
+  const localHas = countRawTabs(rsCache.local) > 0;
+  const gitHas = countRawTabs(rsCache.git) > 0;
+
+  const toggleActive = localHas || gitHas;
+  $('rs-tab-local').disabled = !toggleActive;
+  $('rs-tab-git').disabled = !toggleActive;
+  rsSource = localHas ? 'local' : (gitHas ? 'git' : 'local');
+
+  renderRsSource();
+}
+
+function renderRsSource() {
+  $('rs-tab-local').classList.toggle('active', rsSource === 'local');
+  $('rs-tab-git').classList.toggle('active', rsSource === 'git');
+
+  const data = rsCache[rsSource];
+  const list = $('rs-list');
+  list.innerHTML = '';
+
+  const windowRows = [];
+  if (data && Array.isArray(data.windows)) {
+    data.windows.forEach((win, wi) => {
+      const rawTabs = win.tabs || [];
+      const validRows = [];
+      rawTabs.forEach((t, ti) => {
+        if (!t.url || /^(about|chrome|moz-extension):/i.test(t.url)) return;
+        validRows.push({ t, key: `${wi}:${ti}` });
+      });
+      if (validRows.length) windowRows.push({ win, wi, validRows });
+    });
+  }
+
+  if (!windowRows.length) {
+    $('rs-empty').hidden = false;
+    $('rs-empty').textContent = (rsSource === 'git' && rsCache.gitError)
+      ? rsCache.gitError
+      : 'Backup is empty.';
+    $('rs-restore-btn').disabled = true;
+    return;
+  }
+  $('rs-empty').hidden = true;
+
+  windowRows.forEach(({ win, wi, validRows }) => {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'rs-window-group';
+
+    const label = document.createElement('div');
+    label.className = 'rs-window-label';
+    label.textContent = win.title || `Window ${wi + 1}`;
+    groupEl.appendChild(label);
+
+    validRows.forEach(({ t, key }) => {
+      const row = document.createElement('label');
+      row.className = 'rs-tab-row';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = rsSelected[rsSource].has(key);
+      cb.addEventListener('change', () => {
+        if (cb.checked) rsSelected[rsSource].add(key);
+        else rsSelected[rsSource].delete(key);
+        $('rs-restore-btn').disabled = rsSelected[rsSource].size === 0;
+      });
+
+      const span = document.createElement('span');
+      span.className = 'rs-tab-title';
+      span.textContent = t.title || t.url;
+      span.title = t.url;
+
+      row.appendChild(cb);
+      row.appendChild(span);
+      groupEl.appendChild(row);
+    });
+
+    list.appendChild(groupEl);
+  });
+
+  $('rs-restore-btn').disabled = rsSelected[rsSource].size === 0;
+}
+
+$('btn-restore-selected').addEventListener('click', () => {
+  openRestoreSelected();
+});
+
+$('rs-back').addEventListener('click', () => {
+  showScreen('main');
+  clearMessage();
+  refreshStatus();
+});
+
+$('rs-tab-local').addEventListener('click', () => {
+  if (rsSource === 'local') return;
+  rsSource = 'local';
+  renderRsSource();
+});
+
+$('rs-tab-git').addEventListener('click', () => {
+  if (rsSource === 'git') return;
+  rsSource = 'git';
+  renderRsSource();
+});
+
+$('rs-restore-btn').addEventListener('click', withBusy('rs-restore-btn', async () => {
+  const selected = Array.from(rsSelected[rsSource]);
+  const r = await sendMessage({ type: 'restoreSelected', source: rsSource, selected });
+  handleResponse(r, () => `Restored ${r.result.openedTabs} tabs in ${r.result.openedWindows} windows (${r.result.restoredGroups} groups).`);
+  showScreen('main');
+}));
+
 $('btn-import').addEventListener('click', () => $('file-input').click());
 
 $('file-input').addEventListener('change', async (e) => {

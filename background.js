@@ -339,6 +339,36 @@ async function pullFromGit() {
   return importFromData(data);
 }
 
+// Reads the tabs backup straight from Git without touching local storage,
+// so it can be shown/restored from alongside (not instead of) the local backup.
+// Returns null when Git isn't configured or the file doesn't exist yet.
+async function getGitTabsData() {
+  const settings = await getSettings();
+  const errors = validateSettings(settings);
+  if (errors.length) return null;
+
+  const existing = await gitGetFile(settings);
+  if (!existing) return null;
+
+  const json = base64ToUtf8(existing.content);
+  let data;
+  try {
+    data = JSON.parse(json);
+  } catch (e) {
+    throw new Error('Git file is not valid JSON: ' + e.message);
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.windows)) {
+    throw new Error('Git file has invalid tabs data.');
+  }
+  return {
+    version: data.version || 1,
+    exportedAt: data.exportedAt || null,
+    windows: data.windows,
+    groups: Array.isArray(data.groups) ? data.groups : [],
+    containers: Array.isArray(data.containers) ? data.containers : []
+  };
+}
+
 async function exportToFile() {
   const data = await getTabsData();
   if (!data) throw new Error('No saved tabs to export. Collect tabs first.');
@@ -370,8 +400,11 @@ async function importFromData(data) {
 
 /* ---------- restore ---------- */
 
-async function restoreTabs() {
-  const data = await getTabsData();
+// selectedKeys: optional Set of "windowIndex:tabIndex" strings (indices into
+// the raw, unfiltered data.windows[i].tabs arrays). When provided, only those
+// tabs are restored; when omitted, all restorable tabs are restored.
+async function restoreTabs(data, selectedKeys) {
+  if (!data) data = await getTabsData();
   if (!data) throw new Error('No saved tabs to restore.');
 
   const canGroup = browser.tabs && typeof browser.tabs.group === 'function' &&
@@ -384,8 +417,16 @@ async function restoreTabs() {
   let openedTabs = 0;
   let restoredGroups = 0;
 
-  for (const win of data.windows) {
-    const tabs = (win.tabs || []).filter(t => t.url && !/^(about|chrome|moz-extension):/i.test(t.url));
+  for (let wi = 0; wi < data.windows.length; wi++) {
+    const win = data.windows[wi];
+    const rawTabs = win.tabs || [];
+    const tabs = [];
+    for (let ti = 0; ti < rawTabs.length; ti++) {
+      const t = rawTabs[ti];
+      if (!t.url || /^(about|chrome|moz-extension):/i.test(t.url)) continue;
+      if (selectedKeys && !selectedKeys.has(`${wi}:${ti}`)) continue;
+      tabs.push(t);
+    }
     if (!tabs.length) continue;
 
     // Create window with the first tab.
@@ -504,6 +545,17 @@ async function handle(message) {
       return importFromData(message.data);
     case 'restore':
       return restoreTabs();
+    case 'restoreSelected': {
+      const source = message.source === 'git' ? 'git' : 'local';
+      const data = source === 'git' ? await getGitTabsData() : await getTabsData();
+      if (!data) throw new Error('No saved tabs to restore.');
+      const selectedKeys = new Set(Array.isArray(message.selected) ? message.selected : []);
+      return restoreTabs(data, selectedKeys);
+    }
+    case 'getLocalTabsData':
+      return getTabsData();
+    case 'getGitTabsData':
+      return getGitTabsData();
     case 'getStatus':
       return getStatus();
     case 'getSettings':
