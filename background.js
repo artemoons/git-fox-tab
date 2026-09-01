@@ -6,6 +6,7 @@
 const STORAGE_KEYS = {
   settings: 'settings',
   tabsData: 'tabsData',
+  localTabsData: 'localTabsData',
   status: 'status'
 };
 
@@ -51,6 +52,20 @@ async function saveTabsData(data) {
 async function getStatus() {
   const res = await browser.storage.local.get(STORAGE_KEYS.status);
   return res[STORAGE_KEYS.status] || null;
+}
+
+// The "local" backup: only ever written by an explicit local action
+// (Collect & save tabs, Import from file). Deliberately never touched by
+// Pull from Git, so the Restore-selected screen can show a genuinely
+// independent Local vs Git comparison instead of Pull silently making them
+// identical.
+async function getLocalBackup() {
+  const res = await browser.storage.local.get(STORAGE_KEYS.localTabsData);
+  return res[STORAGE_KEYS.localTabsData] || null;
+}
+
+async function saveLocalBackup(data) {
+  await browser.storage.local.set({ [STORAGE_KEYS.localTabsData]: data });
 }
 
 /* ---------- base64 helpers (UTF-8 safe) ---------- */
@@ -157,6 +172,7 @@ async function collectTabs() {
   };
 
   await saveTabsData(data);
+  await saveLocalBackup(data);
   return data;
 }
 
@@ -336,7 +352,15 @@ async function pullFromGit() {
   } catch (e) {
     throw new Error('File is not valid JSON: ' + e.message);
   }
-  return importFromData(data);
+  // Updates only the general/active backup (used by Restore/Export/Push),
+  // deliberately NOT the dedicated local backup — pulling from Git must not
+  // make the Restore-selected screen's "Local" tab look like Git's content.
+  const normalized = normalizeImportedData(data);
+  await saveTabsData(normalized);
+  return {
+    windowCount: normalized.windows.length,
+    tabCount: normalized.windows.reduce((n, w) => n + (w.tabs || []).length, 0)
+  };
 }
 
 // Reads the tabs backup straight from Git without touching local storage,
@@ -381,17 +405,24 @@ async function exportToFile() {
   return { filename };
 }
 
-async function importFromData(data) {
+function normalizeImportedData(data) {
   if (!data || typeof data !== 'object') throw new Error('Invalid file: not a JSON object.');
   if (!Array.isArray(data.windows)) throw new Error('Invalid file: missing "windows" array.');
-  const normalized = {
+  return {
     version: data.version || 1,
     exportedAt: data.exportedAt || new Date().toISOString(),
     windows: data.windows,
     groups: Array.isArray(data.groups) ? data.groups : [],
     containers: Array.isArray(data.containers) ? data.containers : []
   };
+}
+
+async function importFromData(data) {
+  const normalized = normalizeImportedData(data);
+  // Importing a file is an explicit local action, like Collect & save tabs,
+  // so it updates both the general/active backup and the dedicated local one.
   await saveTabsData(normalized);
+  await saveLocalBackup(normalized);
   return {
     windowCount: normalized.windows.length,
     tabCount: normalized.windows.reduce((n, w) => n + (w.tabs || []).length, 0)
@@ -547,13 +578,13 @@ async function handle(message) {
       return restoreTabs();
     case 'restoreSelected': {
       const source = message.source === 'git' ? 'git' : 'local';
-      const data = source === 'git' ? await getGitTabsData() : await getTabsData();
+      const data = source === 'git' ? await getGitTabsData() : await getLocalBackup();
       if (!data) throw new Error('No saved tabs to restore.');
       const selectedKeys = new Set(Array.isArray(message.selected) ? message.selected : []);
       return restoreTabs(data, selectedKeys);
     }
     case 'getLocalTabsData':
-      return getTabsData();
+      return getLocalBackup();
     case 'getGitTabsData':
       return getGitTabsData();
     case 'getStatus':

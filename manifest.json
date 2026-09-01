@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Git Fox Tab",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Save all open tabs (and tab groups) across windows and export them to Git (GitHub/GitLab).",
   "icons": {
     "48": "icons/icon-48.png",
