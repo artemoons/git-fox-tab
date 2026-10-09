@@ -93,6 +93,8 @@ function showScreen(name) {
 let rsSource = 'local';
 let rsCache = { local: null, git: null, gitError: null };
 let rsSelected = { local: new Set(), git: new Set() };
+let rsExpanded = { local: new Set(), git: new Set() };
+let rsSelectableKeys = [];
 
 function countRawTabs(data) {
   if (!data || !Array.isArray(data.windows)) return 0;
@@ -104,11 +106,14 @@ async function openRestoreSelected() {
   clearMessage();
 
   rsSelected = { local: new Set(), git: new Set() };
+  rsExpanded = { local: new Set(), git: new Set() };
   rsCache = { local: null, git: null, gitError: null };
 
   $('rs-tab-local').disabled = true;
   $('rs-tab-git').disabled = true;
   $('rs-restore-btn').disabled = true;
+  $('rs-select-all-btn').disabled = true;
+  $('rs-select-all-btn').textContent = 'Select all';
   $('rs-empty').hidden = true;
   $('rs-list').innerHTML = '<div class="rs-loading">Loading…</div>';
 
@@ -157,6 +162,10 @@ function renderRsSource() {
     });
   }
 
+  rsSelectableKeys = windowRows.flatMap(({ validRows }) => validRows.map(({ key }) => key));
+  $('rs-select-all-btn').disabled = rsSelectableKeys.length === 0;
+  $('rs-select-all-btn').textContent = 'Select all';
+
   if (!windowRows.length) {
     $('rs-empty').hidden = false;
     $('rs-empty').textContent = (rsSource === 'git' && rsCache.gitError)
@@ -167,6 +176,15 @@ function renderRsSource() {
   }
   $('rs-empty').hidden = true;
 
+  const selected = rsSelected[rsSource];
+  const expanded = rsExpanded[rsSource];
+  const groupInfo = new Map((data.groups || []).map(g => [g.id, g]));
+  const updateSelectionButtons = () => {
+    $('rs-restore-btn').disabled = selected.size === 0;
+    $('rs-select-all-btn').textContent = rsSelectableKeys.every(key => selected.has(key))
+      ? 'Deselect all' : 'Select all';
+  };
+
   windowRows.forEach(({ win, wi, validRows }) => {
     const groupEl = document.createElement('div');
     groupEl.className = 'rs-window-group';
@@ -176,17 +194,30 @@ function renderRsSource() {
     label.textContent = win.title || `Window ${wi + 1}`;
     groupEl.appendChild(label);
 
-    validRows.forEach(({ t, key }) => {
+    const windowList = document.createElement('ul');
+    windowList.className = 'rs-window-tabs';
+    groupEl.appendChild(windowList);
+
+    const groupedRows = new Map();
+    validRows.forEach(row => {
+      if (row.t.groupId == null || row.t.groupId < 0) return;
+      if (!groupedRows.has(row.t.groupId)) groupedRows.set(row.t.groupId, []);
+      groupedRows.get(row.t.groupId).push(row);
+    });
+
+    function appendTab(parent, { t, key }, updateGroup = () => {}) {
+      const item = document.createElement('li');
       const row = document.createElement('label');
       row.className = 'rs-tab-row';
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.checked = rsSelected[rsSource].has(key);
+      cb.checked = selected.has(key);
       cb.addEventListener('change', () => {
-        if (cb.checked) rsSelected[rsSource].add(key);
-        else rsSelected[rsSource].delete(key);
-        $('rs-restore-btn').disabled = rsSelected[rsSource].size === 0;
+        if (cb.checked) selected.add(key);
+        else selected.delete(key);
+        updateGroup();
+        updateSelectionButtons();
       });
 
       const span = document.createElement('span');
@@ -196,14 +227,99 @@ function renderRsSource() {
 
       row.appendChild(cb);
       row.appendChild(span);
-      groupEl.appendChild(row);
+      item.appendChild(row);
+      parent.appendChild(item);
+      return cb;
+    }
+
+    const renderedGroups = new Set();
+    validRows.forEach(tabRow => {
+      const groupId = tabRow.t.groupId;
+      if (!groupedRows.has(groupId)) {
+        appendTab(windowList, tabRow);
+        return;
+      }
+      if (renderedGroups.has(groupId)) return;
+      renderedGroups.add(groupId);
+
+      const rows = groupedRows.get(groupId);
+      const info = groupInfo.get(groupId);
+      const groupName = (info && info.name) || `Group ${groupId}`;
+      const groupKey = `${wi}:${groupId}`;
+      const item = document.createElement('li');
+      item.className = 'rs-tab-group';
+
+      const header = document.createElement('div');
+      header.className = 'rs-group-header';
+      const groupCheckbox = document.createElement('input');
+      groupCheckbox.type = 'checkbox';
+      groupCheckbox.setAttribute('aria-label', `Select all tabs in ${groupName}`);
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'rs-group-toggle';
+      const arrow = document.createElement('span');
+      arrow.className = 'rs-group-arrow';
+      arrow.textContent = '▸';
+      arrow.setAttribute('aria-hidden', 'true');
+      const title = document.createElement('span');
+      title.className = 'rs-tab-title';
+      title.textContent = groupName;
+      title.title = groupName;
+      const count = document.createElement('span');
+      count.className = 'rs-group-count';
+      count.textContent = rows.length;
+      toggle.append(arrow, title, count);
+      header.append(groupCheckbox, toggle);
+
+      const children = document.createElement('ul');
+      children.className = 'rs-group-tabs';
+      children.id = `rs-group-${rsSource}-${wi}-${groupId}`;
+      toggle.setAttribute('aria-controls', children.id);
+      const updateExpanded = () => {
+        const isExpanded = expanded.has(groupKey);
+        children.hidden = !isExpanded;
+        toggle.setAttribute('aria-expanded', String(isExpanded));
+      };
+      toggle.addEventListener('click', () => {
+        if (expanded.has(groupKey)) expanded.delete(groupKey);
+        else expanded.add(groupKey);
+        updateExpanded();
+      });
+      updateExpanded();
+
+      const updateGroup = () => {
+        const selectedCount = rows.filter(({ key }) => selected.has(key)).length;
+        groupCheckbox.checked = selectedCount === rows.length;
+        groupCheckbox.indeterminate = selectedCount > 0 && selectedCount < rows.length;
+      };
+      const tabCheckboxes = rows.map(row => appendTab(children, row, updateGroup));
+      groupCheckbox.addEventListener('change', () => {
+        rows.forEach(({ key }, index) => {
+          if (groupCheckbox.checked) selected.add(key);
+          else selected.delete(key);
+          tabCheckboxes[index].checked = groupCheckbox.checked;
+        });
+        updateGroup();
+        updateSelectionButtons();
+      });
+      updateGroup();
+      item.append(header, children);
+      windowList.appendChild(item);
     });
 
     list.appendChild(groupEl);
   });
 
-  $('rs-restore-btn').disabled = rsSelected[rsSource].size === 0;
+  updateSelectionButtons();
 }
+
+$('rs-select-all-btn').addEventListener('click', () => {
+  const selected = rsSelected[rsSource];
+  if (rsSelectableKeys.every(key => selected.has(key))) selected.clear();
+  else rsSelectableKeys.forEach(key => selected.add(key));
+  renderRsSource();
+});
 
 $('btn-restore-selected').addEventListener('click', () => {
   openRestoreSelected();

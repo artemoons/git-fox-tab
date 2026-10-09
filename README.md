@@ -53,6 +53,9 @@ extension requests host permission for the server so it can call the API.
 - **Export to file** — downloads the stored data as a `.json` file.
 - **Import from file** — loads a previously exported `.json` file.
 - **Restore tabs** — reopens the stored tabs, one window per original window.
+- **Restore selected tabs** — choose individual tabs or whole groups from Local
+  or Git backups. Expand a group to view its tabs; its checkbox selects or
+  deselects all tabs inside it.
 
 ## Output format
 
